@@ -2,6 +2,7 @@
 
 Status: Approved for the university MVP
 Approval date: 2026-11-14
+Flyway migration decision incorporated: 2026-11-15
 Related documents: [product.md](product.md), [architecture.md](architecture.md)
 
 These standards prioritize simple, fast delivery of the university project. Revisit the workflow before commercial production. Product scope and architectural decisions remain defined by the linked documents; these guidelines do not resolve their explicitly open decisions.
@@ -89,6 +90,12 @@ Follow the error contract in [architecture.md](architecture.md): `ProblemDetails
 - Treat dependency upgrades as deliberate changes with appropriate verification. Avoid unrelated major upgrades during feature work.
 - Keep secrets outside the repository, following the environment configuration in [architecture.md](architecture.md).
 
+## Database migrations
+
+Use Flyway versioned SQL migrations as the schema source of truth. Keep EF Core mappings consistent with those scripts and exercise the same migrations against real PostgreSQL in integration tests. Do not create a separate test schema through EF Core migrations or `EnsureCreated()`.
+
+Do not edit an applied migration; add a subsequent versioned script. Run Flyway validation and stop on migration or checksum errors. Do not automatically use `repair`, `clean`, or baselining to suppress failures. Keep schema changes compatible with the previous application release, following the deployment policy in [architecture.md](architecture.md).
+
 ## Testing
 
 | Scope | Approved tool |
@@ -121,7 +128,7 @@ Agents must leave changes for the user's review and obtain explicit approval bef
 
 Every push to `main` runs the applicable build, lint, format, and automated test checks. If a pull request is used, it runs checks without deployment.
 
-After checks pass, automatically build and publish the Docker image, run the controlled migration step, deploy to Elastic Beanstalk, and verify health and basic application availability. Follow the image identity, OIDC, serialization, and migration rules in [architecture.md](architecture.md). A failed check blocks deployment; accepting temporary CI failures does not authorize bypassing checks.
+After checks pass, automatically build and publish the Docker image, run the controlled Flyway migration step, deploy to Elastic Beanstalk, and verify health and basic application availability. Follow the image identity, OIDC, serialization, and migration rules in [architecture.md](architecture.md). A failed check blocks deployment; accepting temporary CI failures does not authorize bypassing checks.
 
 Terraform validation belongs in CI. Applying infrastructure changes remains an explicitly initiated operation in its separate workflow. Automated tests and deployment smoke checks do not depend on paid AI generation.
 

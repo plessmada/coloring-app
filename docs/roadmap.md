@@ -2,6 +2,7 @@
 
 Status: Approved sequence, scope, and completion criteria
 Approval date: 2026-11-14
+Flyway migration decision and repository status updated: 2026-11-15
 Target: Working university MVP by the end of December 2026
 
 Sources: [product.md](product.md), [architecture.md](architecture.md), [development-guidelines.md](development-guidelines.md), and [AGENTS.md](../AGENTS.md).
@@ -29,16 +30,18 @@ Local foundation → first AWS deployment → guest generation → accounts and 
 
 - Retain the existing .NET API project and create the Angular frontend within the agreed repository layout.
 - Connect the frontend to the API and the backend to PostgreSQL running locally in Docker.
+- Establish Flyway SQL migrations and run the same scripts locally and in database integration tests.
 - Establish development configuration, stable compatible tool versions, formatting, linting, and the initial test setup.
 - Add GitHub Actions checks for the projects implemented at this stage.
 - Document prerequisites, local startup, and verification commands.
 
-**Prerequisites:** Approve the foundation specification and tool versions. Git and a GitHub repository must be available before the hosted CI run; the inspected workspace currently has no Git repository. Repository initialization, commits, and remote publication remain explicit setup actions, not actions performed by this roadmap.
+**Prerequisites:** Approve the [foundation specification](specs/001-project-foundation.md) and its tool baseline. The workspace now has a Git repository on `main` and a configured GitHub remote; hosted Actions execution remains to be verified after an explicitly authorized push. Commits and remote publication remain subject to user review and approval.
 
 **Completion criteria:**
 
 - The application starts using the documented instructions.
 - Angular communicates with the API, and the backend can reach the local PostgreSQL instance.
+- Flyway initializes an empty database, validates the applied migrations, and safely does nothing when rerun without new scripts.
 - Initial meaningful checks run locally and in GitHub Actions and pass.
 - No AWS deployment is required to complete the local application; the deployment workflow is connected in stage 2.
 
@@ -54,7 +57,7 @@ Local foundation → first AWS deployment → guest generation → accounts and 
 - Bootstrap protected Terraform state and GitHub Actions OIDC access.
 - Configure the application domain, HTTPS, environment configuration, and CloudWatch logging with seven-day retention.
 - Build the shared frontend/backend image in CI, publish it to ECR, and connect automatic Elastic Beanstalk deployment after successful checks.
-- Establish the controlled migration step and deployment health/smoke checks.
+- Establish the controlled Flyway migration step and deployment health/smoke checks.
 - Check OpenAI model access and SES readiness early to expose integration blockers before feature delivery.
 
 **Prerequisites:** Resolve networking, database connectivity, domain/TLS configuration, instance/deployment settings, persistent cookie-protection key storage, migration execution, and ownership of deployment settings between Terraform and the release workflow. Supply repository identity and required credentials through the approved mechanisms. Infrastructure changes require explicit authorization.

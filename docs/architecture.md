@@ -2,6 +2,7 @@
 
 Status: Approved architecture baseline; open decisions are listed below
 Approval date: 2026-11-14
+Flyway migration decision approved: 2026-11-15
 Product requirements: [product.md](product.md)
 
 This document records approved decisions for the university MVP. Open decisions must be resolved before their dependent implementation or deployment work. Engineering conventions and feature-specification workflow are defined in [development-guidelines.md](development-guidelines.md); agent responsibilities are defined in [AGENTS.md](../AGENTS.md), and implementation sequencing in [roadmap.md](roadmap.md).
@@ -13,6 +14,7 @@ This document records approved decisions for the university MVP. Open decisions 
 | Frontend | Angular, responsive Polish-language UI |
 | Backend | C# / ASP.NET Core Minimal API; retain the existing .NET 10 project |
 | Database | PostgreSQL with EF Core and Npgsql |
+| Database migrations | Flyway with versioned SQL scripts; EF Core remains the runtime ORM |
 | Deployment unit | One Docker image containing the published backend and built Angular static files |
 | Hosting | AWS Elastic Beanstalk, Docker platform |
 | Database hosting | Amazon RDS for PostgreSQL |
@@ -110,6 +112,8 @@ Exact endpoint contracts and DTOs will be specified with their implementation sl
 
 ## Data model and retention
 
+Flyway owns database schema migrations. Keep versioned SQL scripts in the repository and use the same scripts locally, in integration tests, and during deployment. EF Core mappings must match the SQL schema; do not use EF Core migrations, `Database.Migrate()`, or `EnsureCreated()` to manage it. Run Flyway as a separate explicit step, not during API startup. The foundation spec defines the local setup; the AWS execution environment remains a deployment prerequisite.
+
 The following are conceptual entities, not a final SQL schema:
 
 | Entity | Required information |
@@ -180,7 +184,7 @@ Release sequence: checks and tests → image build → ECR publication → datab
 
 Serialize deployments to the online environment. A new push must not cancel an in-progress migration or deployment. Smoke checks verify application availability without automatically requesting paid image generation.
 
-Run migrations from a controlled step in AWS with database access. Migration failure blocks the new application release. Keep migrations compatible with the previous application version so that returning to its image remains possible; application rollback does not automatically roll back database changes. Exact migration execution and deployment mechanics remain open.
+Run Flyway migrations from a controlled step in AWS with database access, using the SQL scripts associated with the application release. Migration failure blocks the new application release. Keep migrations compatible with the previous application version so that returning to its image remains possible; application rollback does not automatically roll back database changes. The AWS execution environment and deployment mechanics remain open.
 
 ### Infrastructure
 
@@ -223,7 +227,7 @@ Approved test tools and CI expectations are defined in [development-guidelines.m
 | AI behavior | Account access, model evaluation, moderation rules, result schema, image dimensions, and handling of transient or ambiguous failures | Real AI integration and acceptance testing |
 | Provider data | OpenAI-side retention and applicable processing configuration, separately from deletion in application storage | Sending real users' recordings |
 | Failure artifacts | Retention and cleanup of failed-job content and rejected images | Persistent generation and cleanup implementation |
-| Migrations and deployment | Exact migration runner, deployment serialization, Terraform/release ownership boundaries, and rollback procedure | Release workflow implementation |
+| Migrations and deployment | AWS execution environment for Flyway, deployment serialization, Terraform/release ownership boundaries, and rollback procedure | Release workflow implementation |
 | Environment setup | Sender domain, SES production access, repository identity, credentials bootstrap, and Terraform state bootstrap | End-to-end online verification |
 | Tooling and browser coverage | Exact compatible tool versions, executable CI commands, and supported browsers beyond initial Chromium CI coverage; follow [development-guidelines.md](development-guidelines.md) | Their dependent implementation slices |
 
@@ -234,6 +238,7 @@ Open entries are not permission to choose a materially different architecture si
 References were consulted during design; verify compatibility when implementing.
 
 - [Npgsql EF Core 10](https://www.npgsql.org/efcore/release-notes/10.0.html)
+- [Flyway Docker](https://documentation.red-gate.com/flyway/reference/usage/flyway-docker) and [PostgreSQL support](https://documentation.red-gate.com/flyway/reference/database-driver-reference/postgresql-database)
 - [ASP.NET Core hosted services](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/host/hosted-services?view=aspnetcore-10.0)
 - [ASP.NET Core cookie authentication](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/cookie?view=aspnetcore-10.0) and [Data Protection](https://learn.microsoft.com/en-us/aspnet/core/security/data-protection/configuration/overview?view=aspnetcore-10.0)
 - [OpenAI transcription](https://developers.openai.com/api/docs/models/gpt-transcribe), [text model](https://developers.openai.com/api/docs/models/gpt-6-luna), [moderation](https://developers.openai.com/api/docs/guides/moderation), and [image model](https://developers.openai.com/api/docs/models/gpt-image-2.6-flare)
