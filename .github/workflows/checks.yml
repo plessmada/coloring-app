@@ -1,0 +1,68 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: backend/**/packages.lock.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Select the pinned npm version
+        run: npm install --global npm@11.20.0
+      - name: Restore backend with locked dependencies
+        run: dotnet restore backend/ColoringApp.slnx --locked-mode
+      - name: Build backend and test hosts
+        run: dotnet build backend/ColoringApp.slnx --no-restore
+      - name: Check C# formatting
+        run: dotnet format backend/ColoringApp.slnx --verify-no-changes --no-restore
+      - name: Test API and Flyway against disposable PostgreSQL
+        run: dotnet test backend/ColoringApp.slnx --no-build --logger "trx;LogFileName=foundation.trx" --results-directory artifacts/backend
+      - name: Restore frontend with locked dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Check frontend formatting
+        working-directory: frontend
+        run: npm run format:check
+      - name: Build frontend for production
+        working-directory: frontend
+        run: npm run build
+      - name: Test frontend with controlled HTTP
+        working-directory: frontend
+        run: npm run test:ci
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Test desktop and mobile browsers with isolated services
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-failure-reports
+          path: |
+            artifacts/backend/
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -8,7 +8,6 @@
 .angular/
 
 # Node modules and dependency files
-/package-lock.json
 /yarn.lock
 
 # Environment files
@@ -74,5 +73,14 @@ msbuild.wrn
 
 # Node.js build artifacts
 node_modules/
-package-lock.json
-package.json
+
+# Frontend output and verification artifacts
+frontend/dist/
+frontend/out-tsc/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+TestResults/
+artifacts/
+.env.*
+!.env.example

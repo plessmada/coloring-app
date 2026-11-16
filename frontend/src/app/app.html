@@ -1,0 +1,60 @@
+<main>
+  <div class="brand-mark" aria-hidden="true">
+    <svg viewBox="0 0 64 64" fill="none">
+      <path
+        d="m16 45 4-14L43 8a5 5 0 0 1 7 7L27 38l-11 7Z"
+        fill="#f3c964"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linejoin="round"
+      />
+      <path d="m20 31 7 7M39 12l7 7M16 45l7-2" stroke="currentColor" stroke-width="2.5" />
+      <path
+        d="M13 54c8-6 14 5 23-1 5-3 9-3 15-1"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+    </svg>
+  </div>
+  <h1>ColoringApp</h1>
+  <p class="introduction">Twoje pomysły zamienimy w kolorowanki.</p>
+
+  <section
+    class="readiness"
+    aria-label="Gotowość aplikacji"
+    [attr.aria-busy]="state() === 'loading'"
+  >
+    <div class="status-symbol" [class.ready]="state() === 'ready'" aria-hidden="true">
+      @switch (state()) {
+        @case ('loading') {
+          <span class="spinner"></span>
+        }
+        @case ('ready') {
+          <span>✓</span>
+        }
+        @case ('failure') {
+          <span>!</span>
+        }
+      }
+    </div>
+    <p role="status" aria-live="polite" aria-atomic="true">
+      @switch (state()) {
+        @case ('loading') {
+          Sprawdzamy gotowość aplikacji…
+        }
+        @case ('ready') {
+          Aplikacja jest gotowa.
+        }
+        @case ('failure') {
+          Nie udało się połączyć z aplikacją. Spróbuj ponownie.
+        }
+      }
+    </p>
+    @if (retryVisible()) {
+      <button type="button" (click)="checkReadiness()" [disabled]="state() === 'loading'">
+        Spróbuj ponownie
+      </button>
+    }
+  </section>
+</main>

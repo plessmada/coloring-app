@@ -1,0 +1,108 @@
+:host {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 2rem 1.25rem;
+}
+main {
+  width: min(100%, 40rem);
+  text-align: center;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin: 0 auto 1.75rem;
+  border: 1px solid #e5dccb;
+  border-radius: 1.5rem;
+  background: #fffdf7;
+  transform: rotate(-6deg);
+}
+svg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(2.5rem, 8vw, 3.75rem);
+  letter-spacing: -0.055em;
+  line-height: 1.15;
+}
+.introduction {
+  max-width: 27rem;
+  margin: 1rem auto 2.5rem;
+  color: #635e56;
+  font-size: clamp(1.05rem, 3vw, 1.25rem);
+  line-height: 1.6;
+}
+.readiness {
+  min-height: 11rem;
+  padding: 1.75rem 1.25rem;
+  border: 1px solid #e5dccb;
+  border-radius: 1.25rem;
+  background: #fffdf8;
+  box-shadow: 0 8px 30px #473d2510;
+}
+.status-symbol {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: #faedcf;
+  color: #735315;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.status-symbol.ready {
+  color: #355c43;
+  background: #e3eee1;
+}
+p[role='status'] {
+  margin: 0.85rem auto 0;
+  max-width: 28rem;
+  line-height: 1.6;
+}
+button {
+  margin-top: 1.25rem;
+  padding: 0.8rem 1.4rem;
+  min-height: 44px;
+  border: 1px solid #314e3e;
+  border-radius: 0.65rem;
+  color: #fffdf8;
+  background: #314e3e;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover:enabled {
+  background: #243e30;
+}
+button:focus-visible {
+  outline: 3px solid #8d570b;
+  outline-offset: 4px;
+}
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #dfc688;
+  border-top-color: #735315;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

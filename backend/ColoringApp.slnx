@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="ColoringApp.Api.Tests/ColoringApp.Api.Tests.csproj" />
   <Project Path="ColoringApp.Api/ColoringApp.Api.csproj" />
+  <Project Path="ColoringApp.BrowserTests.Host/ColoringApp.BrowserTests.Host.csproj" />
 </Solution>

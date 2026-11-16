@@ -174,6 +174,25 @@ Hosted CI cannot be verified before publication. If the user has not authorized 
 5. Add browser verification and GitHub Actions checks; write and exercise the README instructions.
 6. Review acceptance criteria and the diff, report results and limitations, and leave changes for user review without committing or pushing.
 
+## Implementation and local verification — 2026-11-16
+
+The approved scope is implemented and locally verified. The user reviewed the implementation and authorized its commit on 2026-11-16. Status remains **Approved** until the hosted CI requirement is observed after a separately authorized push.
+
+Selected stable versions are recorded in project configuration and lockfiles: Angular/CLI 22.2.6, TypeScript 6.0.3, RxJS 7.8.2, EF Core 10.0.4, Npgsql EF provider 10.0.3, Testcontainers 4.17.0, xUnit 2.9.3, Vitest 5.1.0, and Playwright 1.65.1. The Flyway runner is `redgate/flyway:13.12.2`; the database remains `postgres:18.7`. Registry manifests confirm linux/amd64 support for both, matching the developer host and CI runner. The selected Flyway tag does not publish arm64; other developer architectures require amd64 emulation. No approved major baseline was changed.
+
+Observed local tooling: .NET SDK 10.0.404, Node 26.13.1, npm 11.20.0, Docker Engine 29.9.3, and Compose 5.7.0. Docker Desktop was started successfully.
+
+Verification completed:
+
+- Followed README configuration and startup: ignored `.env`, the User Secrets helper, PostgreSQL startup, Flyway migrate and validate, API HTTP profile, and Angular development server. Readiness succeeded directly and through the Angular proxy; development OpenAPI returned 200.
+- Locked NuGet restoration, backend build, and `dotnet format --verify-no-changes --no-restore` passed. `dotnet test backend/ColoringApp.slnx --no-build` passed all 9 cases with real disposable PostgreSQL and the pinned Flyway runner. Coverage includes schema initialization, validation, no-op rerun, checksum rejection without changing history, safe health failures, bounded stalled connections, and missing/invalid configuration.
+- `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm run test:ci` passed. All 9 Vitest cases passed. Lint also checks Playwright TypeScript; application and template strict checking are explicit.
+- `npm run test:e2e` passed all 4 Chromium scenarios against the real API and migrated database, including controlled failure and keyboard retry. Ready and focused-failure screenshots were inspected at desktop size and 375px mobile width; no horizontal overflow was found.
+- A local PostgreSQL stop/start preserved the application schema OID and a fingerprint of the full Flyway history. Test resources were automatically removed. Local development processes and PostgreSQL were stopped after verification; the persistent development volume was retained.
+- Ignore rules and the diff were reviewed: manifests, lockfiles, and SQL are available for review; `.env`, dependencies, build output, and test reports are ignored. No business tables, AI/email integrations, infrastructure, commit, or push were added.
+
+F-01 through F-08 and F-10 are locally verified. F-09 is locally verified with **hosted GitHub Actions verification pending**. See the [README](../../README.md) for the executable command sequence and [.github/workflows/checks.yml](../../.github/workflows/checks.yml) for the checks workflow.
+
 ## Technical references
 
 Consulted on 2026-11-15; verify exact package and container tags during implementation.
