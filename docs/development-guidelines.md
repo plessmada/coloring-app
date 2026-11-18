@@ -122,7 +122,7 @@ Run checks appropriate to the change and report what ran. If a required check ca
 - Review the diff for scope, accidental changes, and sensitive data before considering the work complete. Mandatory PR approval is not part of the MVP workflow.
 - Revisit branch protection and formal code review before commercial production.
 
-Agents must leave changes for the user's review and obtain explicit approval before committing or pushing. Approval applies to the reviewed changes and named actions; approving a commit alone does not authorize a push. An approved push to `main` triggers the automatic deployment after CI passes. See [AGENTS.md](../AGENTS.md) for agent responsibilities. The current design-stage restriction on application implementation remains in force.
+Agents must leave changes for the user's review and obtain explicit approval before committing or pushing. Approval applies to the reviewed changes and named actions; approving a commit alone does not authorize a push. An approved push to `main` triggers the automatic deployment after CI passes. See [AGENTS.md](../AGENTS.md) for agent responsibilities. Design-only tasks cover authorized documentation changes. Approved feature specifications authorize implementation within their scope.
 
 ## CI/CD expectations
 

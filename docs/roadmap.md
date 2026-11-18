@@ -3,6 +3,7 @@
 Status: Approved sequence, scope, and completion criteria
 Approval date: 2026-11-14
 Flyway migration decision and repository status updated: 2026-11-15
+First AWS deployment specification approved: 2026-11-18
 Target: Working university MVP by the end of December 2026
 
 Sources: [product.md](product.md), [architecture.md](architecture.md), [development-guidelines.md](development-guidelines.md), and [AGENTS.md](../AGENTS.md).
@@ -60,7 +61,7 @@ Local foundation → first AWS deployment → guest generation → accounts and 
 - Establish the controlled Flyway migration step and deployment health/smoke checks.
 - Check OpenAI model access and SES readiness early to expose integration blockers before feature delivery.
 
-**Prerequisites:** Resolve networking, database connectivity, domain/TLS configuration, instance/deployment settings, persistent cookie-protection key storage, migration execution, and ownership of deployment settings between Terraform and the release workflow. Supply repository identity and required credentials through the approved mechanisms. Infrastructure changes require explicit authorization.
+**Prerequisites:** Follow the approved decisions in [specification 002](specs/002-first-aws-deployment.md). Verify exact tool/platform versions, regional availability, required IAM access, and secret provisioning before their dependent online steps. AWS account/profile access and the Route 53 delegation were verified on 2026-11-18. Infrastructure changes require explicit authorization.
 
 **Completion criteria:**
 
@@ -141,11 +142,11 @@ Local foundation → first AWS deployment → guest generation → accounts and 
 
 **Dependencies:** Stages 1–5. Tests are developed throughout those stages; this stage verifies the integrated result.
 
-## Recommended first task
+## Current implementation and next task
 
-Prepare `docs/specs/001-project-foundation.md` using GPT-6 Astra or a comparable advanced model. Inspect the existing backend, propose compatible tool versions and a concrete local/CI setup, and obtain approval for the spec before coding.
+The foundation is implemented in commit `caccd62`. Review on 2026-11-16 confirmed successful backend and frontend builds, 9 backend tests, 9 frontend tests, and 4 Chromium scenarios. Hosted GitHub Actions verification remains pending in the available evidence, as recorded in [specification 001](specs/001-project-foundation.md).
 
-The first implementation task is the approved foundation: Angular communicating with the retained .NET API, local PostgreSQL connectivity, formatting, initial tests, and CI. Keep AI generation, authentication, and cloud deployment in their later stages. Leave implementation changes for user review; do not commit or push without approval.
+Implement [specification 002 — First AWS Deployment](specs/002-first-aws-deployment.md), approved on 2026-11-18. It defines production packaging, the AWS topology, Flyway execution, secret and key storage, and release automation for stage 2. Verify remaining implementation prerequisites before the affected online steps. The existing explicit approval boundaries apply to Git publication and infrastructure application.
 
 ## Readiness and open decisions
 

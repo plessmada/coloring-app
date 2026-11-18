@@ -3,6 +3,7 @@
 Status: Approved architecture baseline; open decisions are listed below
 Approval date: 2026-11-14
 Flyway migration decision approved: 2026-11-15
+First AWS deployment decisions approved: 2026-11-18, in [specification 002](specs/002-first-aws-deployment.md)
 Product requirements: [product.md](product.md)
 
 This document records approved decisions for the university MVP. Open decisions must be resolved before their dependent implementation or deployment work. Engineering conventions and feature-specification workflow are defined in [development-guidelines.md](development-guidelines.md); agent responsibilities are defined in [AGENTS.md](../AGENTS.md), and implementation sequencing in [roadmap.md](roadmap.md).
@@ -16,8 +17,11 @@ This document records approved decisions for the university MVP. Open decisions 
 | Database | PostgreSQL with EF Core and Npgsql |
 | Database migrations | Flyway with versioned SQL scripts; EF Core remains the runtime ORM |
 | Deployment unit | One Docker image containing the published backend and built Angular static files |
-| Hosting | AWS Elastic Beanstalk, Docker platform |
-| Database hosting | Amazon RDS for PostgreSQL |
+| Hosting | AWS Elastic Beanstalk Docker on AL2023, one steady-state x86-64 instance, immutable deployments |
+| Database hosting | Private, independently managed Amazon RDS for PostgreSQL 18, Single-AZ |
+| Public HTTPS and DNS | ALB with ACM in `eu-central-1`; `color.plik.click` in a Route 53 zone delegated from Cloudflare |
+| Network | Dedicated VPC across two availability zones, public ALB subnets, private application subnets, isolated database subnets, one NAT gateway |
+| Migration execution | VPC-connected CodeBuild running the pinned Flyway container |
 | Object storage | Private Amazon S3 storage |
 | Email delivery | Amazon SES |
 | AI provider | OpenAI API |
@@ -29,6 +33,8 @@ This document records approved decisions for the university MVP. Open decisions 
 | Logs | Amazon CloudWatch Logs, seven-day retention |
 
 ASP.NET Core serves both the frontend and `/api` under one origin. Local development can run Angular and .NET separately. Keep one backend application organized by functionality; separate projects for every layer are unnecessary for this MVP.
+
+[Specification 002](specs/002-first-aws-deployment.md) defines the approved deployment sizing, production proxy behavior, database roles, secret bootstrap, and verification. Import the existing Route 53 zone into Terraform while preserving its completed delegation. Regional availability and exact tooling/platform versions remain implementation checks.
 
 ### Backend responsibilities
 
@@ -112,7 +118,7 @@ Exact endpoint contracts and DTOs will be specified with their implementation sl
 
 ## Data model and retention
 
-Flyway owns database schema migrations. Keep versioned SQL scripts in the repository and use the same scripts locally, in integration tests, and during deployment. EF Core mappings must match the SQL schema; do not use EF Core migrations, `Database.Migrate()`, or `EnsureCreated()` to manage it. Run Flyway as a separate explicit step, not during API startup. The foundation spec defines the local setup; the AWS execution environment remains a deployment prerequisite.
+Flyway owns database schema migrations. Keep versioned SQL scripts in the repository and use the same scripts locally, in integration tests, and during deployment. EF Core mappings must match the SQL schema; do not use EF Core migrations, `Database.Migrate()`, or `EnsureCreated()` to manage it. Run Flyway as a separate explicit step, not during API startup. The foundation spec defines the local setup, and specification 002 defines the CodeBuild runner with private RDS access.
 
 The following are conceptual entities, not a final SQL schema:
 
@@ -156,7 +162,7 @@ The .NET backend manages accounts and one-time email-code challenges; SES transp
 
 Never store or log plaintext codes. Use ASP.NET Core cookie authentication with `HttpOnly`, `Secure`, appropriate `SameSite`, and CSRF protection for state-changing operations. Generation quotas remain outside the MVP; authentication protections are a separate requirement.
 
-Data Protection keys must persist beyond container replacement and be available to application instances that need to validate existing cookies. Protect the key store and separate environments. The concrete storage mechanism is still open.
+Persist Data Protection keys using the AWS SSM provider with KMS protection under `/coloring-app/mvp/data-protection` and stable application name `ColoringApp-mvp`. Share keys across application replacements and instances within that environment. Verify persistence through the synthetic payload check in specification 002, with separate local test storage.
 
 SES sender verification and production access in `eu-central-1` are deployment prerequisites for sending codes to arbitrary recipients. The exact domain and sender address remain to be supplied.
 
@@ -182,15 +188,15 @@ SES sender verification and production access in `eu-central-1` are deployment p
 
 Release sequence: checks and tests → image build → ECR publication → database migrations → Elastic Beanstalk deployment → health and smoke checks.
 
-Serialize deployments to the online environment. A new push must not cancel an in-progress migration or deployment. Smoke checks verify application availability without automatically requesting paid image generation.
+Serialize deployments to the online environment with queued releases and `cancel-in-progress: false`. Coordinate infrastructure application and authorized rollback through the same environment mutation exclusion. A new push must not cancel an in-progress migration or deployment. Smoke checks verify application availability and the intended release identity without automatically requesting paid image generation.
 
-Run Flyway migrations from a controlled step in AWS with database access, using the SQL scripts associated with the application release. Migration failure blocks the new application release. Keep migrations compatible with the previous application version so that returning to its image remains possible; application rollback does not automatically roll back database changes. The AWS execution environment and deployment mechanics remain open.
+Run Flyway migrations in VPC-connected CodeBuild with private RDS access, using the versioned SQL artifact associated with the tested application image. Wait for successful migration and validation before deploying that image by ECR digest through Beanstalk. Migration failure blocks the new application release. Keep migrations compatible with the previous application version so that returning to its image remains possible; application rollback does not automatically roll back database changes. Specification 002 defines immutable deployment, failure observation, and an explicitly initiated rollback workflow using retained successful versions.
 
 ### Infrastructure
 
 Manage infrastructure with Terraform through a separate workflow. Review a plan and explicitly initiate `apply`; an application push must not automatically apply infrastructure changes.
 
-Store Terraform state in private encrypted S3 with versioning and locking against concurrent modifications. Bootstrap the state backend and GitHub OIDC trust once before the workflows depend on them. Define ownership of application-version settings between Terraform and the release workflow to avoid conflicting updates.
+Store Terraform state in private encrypted S3 with versioning and native S3 locking through `use_lockfile`. Bootstrap the state backend and GitHub OIDC trust once before the workflows depend on them. Terraform owns infrastructure and environment configuration. The release workflow owns application versions and subsequent Beanstalk `version_label` updates. Ignore only that release-owned attribute after initialization, as defined in specification 002.
 
 ## Observability and testing
 
@@ -220,15 +226,15 @@ Approved test tools and CI expectations are defined in [development-guidelines.m
 
 | Area | Required decision or validation | Resolve before |
 | --- | --- | --- |
-| AWS networking and HTTPS | Network topology, RDS access, TLS termination, application domain, proxy handling, and instance/deployment settings | Online infrastructure and deployment implementation |
-| Cookie protection | Durable protected Data Protection key store shared as needed across deployments | Online authentication implementation |
+| AWS deployment validation | Verify regional availability, exact platform versions, proxy behavior, RDS access, and quotas for the approved topology in specification 002 | Infrastructure application and online acceptance |
+| Cookie protection verification | Verify the approved SSM/KMS key store across application replacements | Online authentication implementation |
 | Authentication details | Code format and verifier protection, precise challenge throttling, cookie settings, and guest-session renewal behavior | Authentication implementation |
 | Recording and job bounds | Audio formats, upload size/duration, processing deadlines, worker ownership/stale detection, cleanup timing, and concurrency | Generation pipeline implementation |
 | AI behavior | Account access, model evaluation, moderation rules, result schema, image dimensions, and handling of transient or ambiguous failures | Real AI integration and acceptance testing |
 | Provider data | OpenAI-side retention and applicable processing configuration, separately from deletion in application storage | Sending real users' recordings |
 | Failure artifacts | Retention and cleanup of failed-job content and rejected images | Persistent generation and cleanup implementation |
-| Migrations and deployment | AWS execution environment for Flyway, deployment serialization, Terraform/release ownership boundaries, and rollback procedure | Release workflow implementation |
-| Environment setup | Sender domain, SES production access, repository identity, credentials bootstrap, and Terraform state bootstrap | End-to-end online verification |
+| Migration and release verification | Verify the approved CodeBuild execution, release serialization, Terraform ownership, and rollback flow from specification 002 | Deployment acceptance |
+| Environment setup | Sender domain, SES production access, scoped operator IAM access, secret provisioning, and Terraform state bootstrap; verified account/profile and DNS details are in specification 002 | End-to-end online verification |
 | Tooling and browser coverage | Exact compatible tool versions, executable CI commands, and supported browsers beyond initial Chromium CI coverage; follow [development-guidelines.md](development-guidelines.md) | Their dependent implementation slices |
 
 Open entries are not permission to choose a materially different architecture silently. Resolve them through the remaining design stages and record the outcome before dependent work.
