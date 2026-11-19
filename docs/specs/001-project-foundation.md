@@ -18,7 +18,7 @@ Include:
 - Database connectivity, initial schema migration, health endpoints, and sanitized failures.
 - Version pins, development configuration, formatting, linting, tests, GitHub Actions checks, and startup documentation.
 
-Exclude voice recording, AI calls, generation jobs, accounts, guest sessions, history, email, S3, Terraform resources, application container packaging, and AWS deployment. These belong to later roadmap stages. Do not introduce placeholder business tables or mock product flows.
+Exclude voice recording, AI calls, generation jobs, accounts, guest sessions, history, and email. Follow the roadmap for later features. Do not introduce placeholder business tables or mock product flows.
 
 ## Inspected starting point
 
@@ -61,7 +61,7 @@ Angular's current compatibility table supports Node 26 with Angular 22 and TypeS
 - Keep Compose database credentials in ignored root `.env`, with `.env.example` documenting required variables. Use .NET User Secrets for `ConnectionStrings:DefaultConnection`; CI may inject its equivalent environment variable. Explain how to configure the same database name and credentials for both processes without logging them.
 - Flyway connects to `postgres:5432` inside the Compose network; the local API uses the mapped host port. Pass Flyway credentials through environment configuration, not command arguments or committed URLs containing passwords.
 - Missing required backend configuration must fail startup with a clear, non-secret diagnostic. A configured database being temporarily unreachable must not crash the API or prevent liveness checks.
-- Automated tests use isolated disposable databases and credentials, never the developer's persistent volume. No AWS, OpenAI, or email credentials are needed for this stage.
+- Automated tests use isolated disposable databases and credentials, never the developer's persistent volume. The foundation checks require only disposable database credentials.
 
 ## Database and Flyway contract
 
@@ -76,9 +76,9 @@ Required behavior:
 3. `validate` after migration succeeds. Enable validation on migration and strict migration filename validation. An applied-script checksum mismatch must fail validation and stop the migration workflow.
 4. Keep `clean` disabled and automatic baselining disabled. Do not automatically repair history or ignore validation failures. Applied SQL files are immutable; subsequent changes use new versions.
 5. The API must never execute migrations or create its own schema, including during tests. No EF migrations, `Database.Migrate()`, `EnsureCreated()`, or PostgreSQL initialization scripts duplicating V1.
-6. SQL files and the pinned Flyway runner are shared by local development, integration tests, and later deployment. The AWS runner and its network/identity configuration remain stage 2 work.
+6. Local development and integration tests use the same SQL files and pinned Flyway runner.
 
-This stage proves schema persistence, not business-data persistence. Future specs introduce tables and update EF mappings with corresponding Flyway scripts. Backward-compatible schema changes and application rollback rules remain those in the architecture.
+This stage verifies persistence of the initial schema. Future specs introduce tables and update EF mappings with corresponding Flyway scripts.
 
 ## API and user-visible behavior
 
@@ -115,7 +115,7 @@ Checks cover:
 - Frontend linting, formatting, production build, and Vitest tests for loading, success, failure, timeout, and retry behavior using a controlled HTTP backend.
 - A small Playwright Chromium suite: the foundation screen reaches ready through the real API and migrated PostgreSQL; a controlled failed readiness response followed by success exercises retry. Check desktop and mobile layouts. Browser tests must start and stop their own test processes and database resources.
 
-CI can split independent checks into jobs. Keep commands aligned with local verification, upload useful failure reports without secrets, and clean up disposable resources even on failure. Do not add empty test projects, meaningless coverage targets, or empty Terraform jobs. Application-image publication and deployment are added in stage 2.
+CI can split independent checks into jobs. Keep commands aligned with local verification, upload useful failure reports without secrets, and clean up disposable resources even on failure.
 
 ## Documentation and intended command interface
 
@@ -162,7 +162,6 @@ Hosted CI cannot be verified before publication. If the user has not authorized 
 - **Already approved:** Angular, .NET 10, PostgreSQL, GitHub Actions, Docker-based local database, and Flyway instead of EF schema migrations. EF Core remains the runtime ORM.
 - **Approved in this specification:** the tool baseline, the dedicated `coloring_app` schema, endpoint contracts, foundation screen, test scope, and local command interface.
 - **Implementation prerequisites:** activate installed Node 26; verify Docker daemon access and image compatibility; resolve and pin exact compatible package patches and the Flyway image. These are not evidence that the setup has already been tested.
-- **Deferred to stage 2:** Flyway's AWS execution environment, deployment credentials and networking, RDS engine availability in the selected region, and the other deployment decisions in the architecture. Do not infer them from local Compose settings.
 - **Model and approval policy:** use the advanced-model specification workflow in the development guidelines for substantive revisions. A suitable implementation agent may execute this approved spec; Git publication still requires separate explicit authorization.
 
 ## Short implementation plan

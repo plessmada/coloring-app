@@ -11,7 +11,7 @@ ColoringApp turns a child's spoken idea into a printable coloring page. It remov
 
 The primary participant is a child who can describe an idea aloud. Reading, writing, and independent operation of the entire application are not required. A parent may operate the recording controls and print the result. Parents and teachers are also potential users.
 
-The first release is a working, publicly accessible web application for a university Web Applications course. It must demonstrate coloring-page generation, database persistence, registration, and login. Commercial launch and monetization are future objectives.
+The first release is a working, publicly accessible web application for a university Web Applications course. It must demonstrate coloring-page generation, database persistence, registration, and login. The current roadmap covers developing and verifying those flows locally. Commercial launch and monetization are future objectives.
 
 ## MVP scope
 
@@ -131,7 +131,7 @@ Keywords are stored in the MVP, but no search feature is implemented.
 
 ## Related architecture
 
-[architecture.md](architecture.md) records the approved technology choices, processing and storage design, authentication protections, deployment, observability, and test strategy. It also identifies remaining decisions and prerequisites, including supported browsers, provider-side data retention, technical processing bounds, and infrastructure details.
+[architecture.md](architecture.md) records the approved technology choices, processing and storage design, authentication protections, logging, and test strategy. It also identifies remaining decisions and prerequisites, including supported browsers, provider-side data retention, and technical processing bounds.
 
 This document defines product behavior and scope. The architecture document defines its technical realization. Deferring generation quotas does not defer authentication protections.
 

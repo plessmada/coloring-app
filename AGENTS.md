@@ -26,8 +26,8 @@
 ## Approval boundaries
 
 - Do not commit or push until the user has reviewed the code and explicitly approved the corresponding action for those changes. Approval of a spec or implementation task is not Git approval. A commit-only approval does not authorize pushing.
-- Work directly on `main` for the university MVP; branches and PRs are optional. An approved push to `main` triggers the agreed automatic deployment after CI passes. Do not bypass failing checks.
-- Obtain explicit authorization for destructive operations or manual changes to cloud infrastructure, including `terraform apply`. Existing approval for the concrete action remains valid; do not repeatedly ask for it.
+- Work directly on `main` for the university MVP. Branches and PRs are optional. An approved push to `main` runs CI checks. Do not bypass failing checks.
+- Obtain explicit authorization for destructive operations or manual changes to cloud infrastructure. Existing approval for the concrete action remains valid.
 - Preserve data, secrets, and unrelated work. Do not broaden a task into unrelated refactoring or dependency upgrades.
 
 The user controls product and architecture decisions and reviews code before Git publication. Keep routine implementation autonomous inside those boundaries.

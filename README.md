@@ -1,6 +1,6 @@
 # ColoringApp
 
-Foundation for a Polish voice-to-coloring application. This stage provides Angular → ASP.NET Core → PostgreSQL connectivity, Flyway migrations, and automated checks. Recording, generation, accounts, and deployment follow in later specifications.
+Foundation for a Polish voice-to-coloring application. Development runs locally with Angular, ASP.NET Core, and PostgreSQL in Docker Compose. The next step in the [roadmap](docs/roadmap.md) is voice-to-coloring generation for guests.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Run root commands from this directory unless a different working directory is sh
    node scripts/configure-local-secrets.mjs
    ```
 
-   The helper reads `.env` and configures `ConnectionStrings:DefaultConnection` for the API's `UserSecretsId`. It connects to `localhost` and the mapped port. Flyway independently uses the same `.env` credentials and `postgres:5432` inside Docker. No passwords are committed or included in JDBC URLs. CI uses disposable credentials; an online host can inject `ConnectionStrings__DefaultConnection` later. AWS, AI, and email credentials are unnecessary.
+   The helper reads `.env` and configures `ConnectionStrings:DefaultConnection` for the API's `UserSecretsId`. It connects to `localhost` and the mapped port. Flyway independently uses the same `.env` credentials and `postgres:5432` inside Docker. No passwords are committed or included in JDBC URLs. CI uses disposable credentials.
 
 3. Start PostgreSQL and explicitly apply and validate migrations:
 
@@ -110,7 +110,7 @@ cd frontend
 npm run format
 ```
 
-`.github/workflows/checks.yml` runs these checks on pushes to `main` and pull requests with read-only permissions and no deployment secrets. A hosted run remains pending until an explicitly authorized push. No application image or AWS deployment is part of this stage.
+`.github/workflows/checks.yml` runs these checks on pushes to `main` and pull requests with read-only permissions. A hosted run remains pending until an explicitly authorized push.
 
 ## Dependency and migration maintenance
 

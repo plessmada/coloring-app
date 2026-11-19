@@ -13,13 +13,12 @@ These standards prioritize simple, fast delivery of the university project. Revi
 | --- | --- |
 | `backend/` | Existing .NET solution, API application, and separate backend test projects |
 | `frontend/` | Angular application, with unit tests next to the code they exercise |
-| `infra/` | Terraform infrastructure definitions |
 | `docs/` | Product, architecture, engineering standards, and subsequent planning documents |
 | `docs/specs/` | Feature specifications, added when substantial features are designed |
 
 Organize frontend and backend code by feature, such as authentication, generations, and history. Keep one backend application. Add shared components when concrete reuse warrants them.
 
-Use EF Core directly in feature services. Define interfaces at integration boundaries such as OpenAI, S3, and email delivery so that these dependencies can be replaced in tests. Introduce additional abstractions when they solve a demonstrated problem.
+Use EF Core directly in feature services. Define interfaces at integration boundaries such as OpenAI and email delivery so that these dependencies can be replaced in tests. Introduce additional abstractions when they solve a demonstrated problem.
 
 Keep endpoint handlers short: validate input, enforce access, call the appropriate service, and map the response. Keep the generation workflow in its service, called by the background worker. Angular components handle presentation; services handle API communication.
 
@@ -63,7 +62,6 @@ Workflow: discussion → draft spec → user approval → autonomous implementat
 | --- | --- |
 | C# | `.editorconfig` and `dotnet format` |
 | Angular | ESLint with Angular support and Prettier |
-| Terraform | `terraform fmt` and `terraform validate` |
 
 Keep formatter and linter configuration in the repository. Automated checks verify formatting; local tools can apply it. Avoid unrelated formatting churn in feature changes.
 
@@ -94,7 +92,7 @@ Follow the error contract in [architecture.md](architecture.md): `ProblemDetails
 
 Use Flyway versioned SQL migrations as the schema source of truth. Keep EF Core mappings consistent with those scripts and exercise the same migrations against real PostgreSQL in integration tests. Do not create a separate test schema through EF Core migrations or `EnsureCreated()`.
 
-Do not edit an applied migration; add a subsequent versioned script. Run Flyway validation and stop on migration or checksum errors. Do not automatically use `repair`, `clean`, or baselining to suppress failures. Keep schema changes compatible with the previous application release, following the deployment policy in [architecture.md](architecture.md).
+Do not edit an applied migration. Add a subsequent versioned script and run Flyway validation. Stop on migration or checksum errors. Do not automatically use `repair`, `clean`, or baselining to suppress failures.
 
 ## Testing
 
@@ -118,19 +116,15 @@ Run checks appropriate to the change and report what ran. If a required check ca
 - During the university phase, work directly on `main`; feature branches and pull requests are optional.
 - Use short, specific English commit messages. Conventional Commits are not required.
 - Keep each commit focused on one understandable task or correction.
-- CI may temporarily fail on `main`; fix the issue in a subsequent commit. Deployment remains blocked until checks pass.
+- CI may temporarily fail on `main`. Fix the issue in a subsequent commit.
 - Review the diff for scope, accidental changes, and sensitive data before considering the work complete. Mandatory PR approval is not part of the MVP workflow.
 - Revisit branch protection and formal code review before commercial production.
 
-Agents must leave changes for the user's review and obtain explicit approval before committing or pushing. Approval applies to the reviewed changes and named actions; approving a commit alone does not authorize a push. An approved push to `main` triggers the automatic deployment after CI passes. See [AGENTS.md](../AGENTS.md) for agent responsibilities. Design-only tasks cover authorized documentation changes. Approved feature specifications authorize implementation within their scope.
+Agents must leave changes for the user's review and obtain explicit approval before committing or pushing. Approval applies to the reviewed changes and named actions. See [AGENTS.md](../AGENTS.md) for agent responsibilities. Design-only tasks cover authorized documentation changes. Approved feature specifications authorize implementation within their scope.
 
-## CI/CD expectations
+## CI expectations
 
-Every push to `main` runs the applicable build, lint, format, and automated test checks. If a pull request is used, it runs checks without deployment.
-
-After checks pass, automatically build and publish the Docker image, run the controlled Flyway migration step, deploy to Elastic Beanstalk, and verify health and basic application availability. Follow the image identity, OIDC, serialization, and migration rules in [architecture.md](architecture.md). A failed check blocks deployment; accepting temporary CI failures does not authorize bypassing checks.
-
-Terraform validation belongs in CI. Applying infrastructure changes remains an explicitly initiated operation in its separate workflow. Automated tests and deployment smoke checks do not depend on paid AI generation.
+Pushes to `main` and pull requests run the applicable build, lint, format, and automated test checks. Use disposable databases and controlled substitutes for AI and email in CI.
 
 Introduce executable checks as their projects and features are implemented. A failure unrelated to a feature must be reported; an unverified change cannot be described as passing the full pipeline.
 
