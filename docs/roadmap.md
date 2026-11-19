@@ -120,7 +120,7 @@ Local foundation → guest generation → accounts and claiming → history → 
 
 The foundation is implemented in commit `caccd62`. Review on 2026-11-16 confirmed successful backend and frontend builds, 9 backend tests, 9 frontend tests, and 4 Chromium scenarios. Hosted GitHub Actions verification remains pending in the available evidence, as recorded in [specification 001](specs/001-project-foundation.md).
 
-Next, prepare specification 002, `docs/specs/002-guest-voice-to-coloring.md`, for the local guest flow defined in stage 2.
+The user approved the [stage 2 guest generation specification](specs/002-guest-voice-to-coloring.md) on 2026-11-19. The next task is to implement the local guest recording, generation and printing flow.
 
 ## Readiness and open decisions
 
