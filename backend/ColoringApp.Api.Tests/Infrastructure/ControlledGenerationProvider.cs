@@ -41,11 +41,12 @@ public sealed class ControlledGenerationProvider : IGenerationProvider
         return new PolishTranscription(text, currentScenario != "foreign_language");
     }
 
-    public Task<bool> IsTextFlaggedAsync(string text, CancellationToken cancellationToken)
+    public Task<ModerationDecision> ModerateTextAsync(string text, CancellationToken cancellationToken)
     {
         var isPrompt = text.StartsWith("Create a child-friendly", StringComparison.Ordinal);
         Record(isPrompt ? "moderate_prompt" : "moderate_transcript");
-        return Task.FromResult(isPrompt ? currentScenario == "prompt_flagged" : currentScenario == "graphic");
+        var flagged = isPrompt ? currentScenario == "prompt_flagged" : currentScenario == "graphic";
+        return Task.FromResult(new ModerationDecision(flagged, flagged ? ["violence/graphic"] : []));
     }
 
     public Task<EnrichmentDecision> EnrichAsync(string transcript, CancellationToken cancellationToken)
@@ -53,21 +54,25 @@ public sealed class ControlledGenerationProvider : IGenerationProvider
         Record("enrich");
         return Task.FromResult(currentScenario switch
         {
-            "profanity" => new EnrichmentDecision("reject", null, null),
+            "profanity" => new EnrichmentDecision("reject", null, null, "profanity"),
             "bad_enrichment" => new EnrichmentDecision("accept", "Drzewo", ["Smok", " smok "]),
             _ => new EnrichmentDecision("accept", "A friendly dragon reading to a seated knight.", ["smok", "rycerz", "książka"])
         });
     }
 
-    public Task<bool> IsPromptAllowedAsync(string transcript, string prompt, CancellationToken cancellationToken)
+    public Task<string?> GetPromptRejectionReasonAsync(string transcript, string prompt, CancellationToken cancellationToken)
     {
         Record("review_prompt");
-        return Task.FromResult(currentScenario != "prompt_rejected");
+        return Task.FromResult(currentScenario == "prompt_rejected" ? "subject_changed" : null);
     }
 
     public async Task<byte[]> GenerateImageAsync(string prompt, CancellationToken cancellationToken)
     {
         Record("generate_image");
+        if (currentScenario == "image_blocked")
+        {
+            throw new GenerationPolicyException("moderation_blocked", "req_test_image", "output", ["violence"]);
+        }
         if (currentScenario == "pause_image")
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
@@ -100,7 +105,7 @@ public sealed class ControlledGenerationProvider : IGenerationProvider
         return Png.Value;
     }
 
-    public async Task<bool> IsImageFlaggedAsync(byte[] png, CancellationToken cancellationToken)
+    public async Task<ModerationDecision> ModerateImageAsync(byte[] png, CancellationToken cancellationToken)
     {
         Record("moderate_image");
         if (!png.AsSpan().SequenceEqual(Png.Value))
@@ -116,7 +121,8 @@ public sealed class ControlledGenerationProvider : IGenerationProvider
             await Task.Delay(20, cancellationToken);
             throw new TaskCanceledException();
         }
-        return currentScenario == "image_rejected";
+        var flagged = currentScenario == "image_rejected";
+        return new ModerationDecision(flagged, flagged ? ["violence"] : []);
     }
 
     private void Record(string stage) => calls.GetOrAdd(currentJob, _ => new()).Enqueue(stage);

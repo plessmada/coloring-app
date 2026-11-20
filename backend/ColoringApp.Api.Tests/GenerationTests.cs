@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -25,28 +27,34 @@ public sealed class GenerationTests(DatabaseFixture fixture)
 
     [Theory]
     [InlineData("success", "Succeeded", null, "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image")]
-    [InlineData("profanity", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich")]
-    [InlineData("graphic", "Rejected", "content_rejected", "transcribe,moderate_transcript")]
+    [InlineData("profanity", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich", "assessment", "profanity")]
+    [InlineData("graphic", "Rejected", "content_rejected", "transcribe,moderate_transcript", "transcript_moderation", "moderation_flagged", "violence/graphic")]
     [InlineData("silence", "Failed", "unintelligible_audio", "transcribe")]
     [InlineData("unusable_audio", "Failed", "unintelligible_audio", "transcribe")]
     [InlineData("foreign_language", "Failed", "unintelligible_audio", "transcribe")]
     [InlineData("bad_enrichment", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich")]
-    [InlineData("prompt_flagged", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt")]
-    [InlineData("prompt_rejected", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt")]
-    [InlineData("bad_png", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image")]
+    [InlineData("prompt_flagged", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt", "prompt_moderation", "moderation_flagged", "violence/graphic")]
+    [InlineData("prompt_rejected", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt", "prompt_review", "subject_changed")]
+    [InlineData("image_blocked", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image", "image_generation", "moderation_blocked", "violence", "output", "req_test_image")]
+    [InlineData("bad_png", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image", "image_verification", "invalid_png")]
     [InlineData("wrong_dimensions", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image")]
     [InlineData("corrupt_png", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image")]
     [InlineData("corrupt_crc", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image")]
-    [InlineData("image_rejected", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image")]
-    [InlineData("image_check_error", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image")]
-    [InlineData("image_check_timeout", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image")]
+    [InlineData("image_rejected", "Rejected", "content_rejected", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image", "image_moderation", "moderation_flagged", "violence")]
+    [InlineData("image_check_error", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image", "image_moderation", "provider_request_failed")]
+    [InlineData("image_check_timeout", "Failed", "generation_failed", "transcribe,moderate_transcript,enrich,moderate_prompt,review_prompt,generate_image,moderate_image", "image_moderation", "stage_timeout")]
     public async Task Pipeline_stops_at_the_decision_and_removes_temporary_audio(
-        string scenario, string status, string? code, string expectedCalls)
+        string scenario, string status, string? code, string expectedCalls,
+        string? expectedStage = null, string? expectedReason = null, string expectedCategories = "-",
+        string expectedModerationStage = "-", string expectedRequestId = "-")
     {
         using var files = new GenerationTestEnvironment();
         var provider = new ControlledGenerationProvider();
         provider.Select(scenario);
-        await using var api = Api(files, provider);
+        var log = new ProcessorLog();
+        await using var baseApi = Api(files, provider);
+        await using var api = baseApi.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddSingleton<ILogger<GenerationProcessor>>(log)));
         using var client = api.CreateClient();
         var (id, _) = await SubmitAsync(client, GenerationTestEnvironment.Recording);
 
@@ -58,6 +66,11 @@ public sealed class GenerationTests(DatabaseFixture fixture)
 
         Assert.Equal(code, terminal.ErrorCode);
         Assert.Equal(expectedCalls, string.Join(',', provider.Calls(id)));
+        if (expectedStage is not null)
+        {
+            Assert.Contains($"Generation {id} stopped at {expectedStage} with {code}; reason {expectedReason}; moderation categories {expectedCategories}; OpenAI moderation stage {expectedModerationStage}; OpenAI request ID {expectedRequestId}",
+                log.Messages);
+        }
         await WaitForAsync(() => Task.FromResult(files.CountFiles("recordings") == 0 ? terminal : null));
         Assert.Empty(files.ListFiles("staged"));
         var job = await ReadJobAsync(id);
@@ -480,6 +493,17 @@ public sealed class GenerationTests(DatabaseFixture fixture)
     }
 
     private sealed record JobStatus(Guid Id, string Status, string? ImageUrl, string? ErrorCode);
+
+    private sealed class ProcessorLog : ILogger<GenerationProcessor>
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Messages.Enqueue(formatter(state, exception));
+    }
 
     private sealed class TestContexts(string connectionString) : IDbContextFactory<ApplicationDbContext>
     {

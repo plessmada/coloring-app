@@ -60,10 +60,6 @@ internal sealed class GenerationWorker(GenerationQueue queue, GenerationCleanup 
                 }
             }
         }
-        catch (GenerationPolicyException)
-        {
-            errorCode = GenerationErrors.Rejected;
-        }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
             errorCode = GenerationErrors.Technical;
