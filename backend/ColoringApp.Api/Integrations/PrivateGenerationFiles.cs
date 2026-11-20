@@ -8,19 +8,26 @@ internal sealed class PrivateGenerationFiles
 
     public PrivateGenerationFiles(IConfiguration configuration, IWebHostEnvironment environment)
     {
-        var defaultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ColoringApp");
-        root = Path.GetFullPath(configuration["GenerationStorage:Root"] ?? defaultPath);
-        var projectRoot = new DirectoryInfo(environment.ContentRootPath);
-        while (projectRoot.Parent is { } parent && !Directory.Exists(Path.Combine(projectRoot.FullName, ".git")))
+        var checkout = new DirectoryInfo(environment.ContentRootPath);
+        while (checkout.Parent is { } parent && !IsGitCheckout(checkout))
         {
-            projectRoot = parent;
+            checkout = parent;
         }
 
-        var insideRepository = Directory.Exists(Path.Combine(projectRoot.FullName, ".git")) && IsWithin(root, projectRoot.FullName);
-        if (insideRepository || IsWithin(root, environment.ContentRootPath) ||
+        var hasCheckout = IsGitCheckout(checkout);
+        var developmentStorage = environment.IsDevelopment() && hasCheckout
+            ? Path.Combine(checkout.FullName, ".generation-data")
+            : null;
+        var defaultPath = developmentStorage ??
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ColoringApp");
+        root = Path.GetFullPath(configuration["GenerationStorage:Root"] ?? defaultPath);
+
+        var insideDevelopmentStorage = developmentStorage is not null && IsWithin(root, developmentStorage);
+        var insideRepository = hasCheckout && IsWithin(root, checkout.FullName);
+        if ((!insideDevelopmentStorage && (insideRepository || IsWithin(root, environment.ContentRootPath))) ||
             (environment.WebRootPath is { } webRoot && IsWithin(root, webRoot)))
         {
-            throw new InvalidOperationException("Configure GenerationStorage:Root outside the repository and web root.");
+            throw new InvalidOperationException("Configure GenerationStorage:Root in .generation-data for development, or outside the checkout, application content root and web root.");
         }
     }
 
@@ -119,6 +126,12 @@ internal sealed class PrivateGenerationFiles
         GenerationFileKind.Image => "approved",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     });
+
+    private static bool IsGitCheckout(DirectoryInfo directory)
+    {
+        var git = Path.Combine(directory.FullName, ".git");
+        return Directory.Exists(git) || File.Exists(git);
+    }
 
     private static bool IsWithin(string path, string directory)
     {
