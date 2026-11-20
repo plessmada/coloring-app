@@ -14,6 +14,7 @@ public sealed class DatabaseFixture : IAsyncLifetime
         Assert.Equal(0, await Database.RunFlywayAsync("migrate"));
         await Database.ScalarAsync("CREATE DATABASE unmigrated");
         await Database.ScalarAsync("CREATE DATABASE checksum_test");
+        await Database.ScalarAsync("CREATE DATABASE upgrade_test");
     }
 
     public Task DisposeAsync() => Database.DisposeAsync().AsTask();

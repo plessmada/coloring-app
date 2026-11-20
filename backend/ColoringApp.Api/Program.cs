@@ -1,5 +1,10 @@
+using ColoringApp.Api.Authentication;
 using ColoringApp.Api.Data;
+using ColoringApp.Api.Generations;
+using ColoringApp.Api.Generations.Endpoints;
 using ColoringApp.Api.Health;
+using ColoringApp.Api.Integrations;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -31,12 +36,33 @@ catch (ArgumentException)
     throw new InvalidOperationException("ConnectionStrings:DefaultConnection must be a valid PostgreSQL connection string.");
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(databaseSettings.ConnectionString));
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options => options.UseNpgsql(databaseSettings.ConnectionString));
 builder.Services.AddScoped<DatabaseReadiness>();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddScoped<GuestAccess>();
+builder.Services.AddScoped<GuestGenerationReader>();
+builder.Services.AddSingleton<PrivateGenerationFiles>();
+builder.Services.AddSingleton(new GenerationPollingIntervals(
+    IdleQueueDelay: TimeSpan.FromSeconds(10),
+    ExpiredJobCheckInterval: TimeSpan.FromSeconds(30)));
+builder.Services.AddSingleton<GenerationQueue>();
+builder.Services.AddSingleton<GenerationCleanup>();
+builder.Services.AddSingleton<GenerationProcessor>();
+builder.Services.AddHostedService(services => services.GetRequiredService<GenerationCleanup>());
+builder.Services.AddHostedService<GenerationWorker>();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto);
+builder.Services.AddHttpClient<IGenerationProvider, OpenAiGenerationProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://api.openai.com/v1/");
+    client.Timeout = Timeout.InfiniteTimeSpan;
+    client.MaxResponseContentBufferSize = 24 * 1024 * 1024;
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+    .RemoveAllLoggers();
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 if (app.Environment.IsDevelopment())
 {
@@ -48,6 +74,7 @@ else
 }
 
 app.MapHealthEndpoints();
+app.MapGenerationEndpoints();
 app.Run();
 
 public partial class Program;

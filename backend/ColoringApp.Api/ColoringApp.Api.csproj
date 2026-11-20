@@ -8,8 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ColoringApp.Api.Tests" />
+    <InternalsVisibleTo Include="ColoringApp.BrowserTests.Host" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
   </ItemGroup>
 
 </Project>

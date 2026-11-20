@@ -9,7 +9,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.17.0" />
     <ProjectReference Include="../ColoringApp.Api/ColoringApp.Api.csproj" />
-    <Compile Include="../ColoringApp.Api.Tests/Infrastructure/PostgresSandbox.cs" Link="PostgresSandbox.cs" />
+    <Compile Include="../ColoringApp.Api.Tests/Infrastructure/*.cs" Link="%(Filename)%(Extension)" />
     <Content Include="../database/**" Link="database/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

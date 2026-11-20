@@ -1,0 +1,85 @@
+@let view = state();
+<section
+  class="generation"
+  [class.result]="view.kind === 'result'"
+  aria-label="Tworzenie kolorowanki"
+>
+  <div class="feedback" aria-live="polite" aria-atomic="true">
+    @switch (view.kind) {
+      @case ('idle') {
+        <h2>Co dziś pokolorujemy?</h2>
+        <p>Opowiedz po polsku, co ma się znaleźć na kolorowance. Masz do 60 sekund.</p>
+      }
+      @case ('permission') {
+        <p>Zezwól na dostęp do mikrofonu, aby rozpocząć nagrywanie.</p>
+      }
+      @case ('recording') {
+        <p>Nagrywamy Twój pomysł.</p>
+      }
+      @case ('uploading') {
+        <p>Wysyłamy nagranie…</p>
+      }
+      @case ('waiting') {
+        <p>{{ view.processing ? 'Tworzymy kolorowankę…' : 'Nagranie czeka na przetworzenie…' }}</p>
+      }
+      @case ('checking') {
+        <p>Sprawdzamy, czy kolorowanka jest gotowa…</p>
+      }
+      @case ('retry') {
+        <p>{{ view.message }}</p>
+      }
+      @case ('error') {
+        <p>{{ view.message }}</p>
+      }
+      @case ('result') {
+        <h2 #primary tabindex="-1">Twoja kolorowanka jest gotowa!</h2>
+        @if (downloadMessage()) {
+          <p>{{ downloadMessage() }}</p>
+        }
+      }
+    }
+  </div>
+
+  @switch (view.kind) {
+    @case ('idle') {
+      <button #primary type="button" (click)="startRecording()">Nagraj pomysł</button>
+    }
+    @case ('recording') {
+      <p class="elapsed">
+        <span class="recording-dot" aria-hidden="true"></span>
+        {{ seconds() }} / 60 s
+      </p>
+      <button #primary type="button" (click)="stopRecording()">Zatrzymaj nagrywanie</button>
+    }
+    @case ('retry') {
+      <button #primary type="button" (click)="retryStatus()">Sprawdź ponownie</button>
+    }
+    @case ('error') {
+      <button #primary type="button" (click)="startRecording()">Nagraj pomysł</button>
+    }
+    @case ('result') {
+      <img
+        #preview
+        class="print-image"
+        [class.loaded]="imageLoaded()"
+        [src]="view.imageUrl"
+        width="1024"
+        height="1536"
+        alt="Wygenerowana kolorowanka"
+        (load)="onImageLoad(preview)"
+        (error)="onImageError()"
+      />
+      <div class="actions">
+        <button type="button" (click)="download()" [disabled]="!imageLoaded() || downloading()">
+          Pobierz PNG
+        </button>
+        <button type="button" class="secondary" (click)="print()" [disabled]="!imageLoaded()">
+          Drukuj
+        </button>
+        <button type="button" class="secondary" (click)="startRecording()">
+          Nagraj kolejny pomysł
+        </button>
+      </div>
+    }
+  }
+</section>

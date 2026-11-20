@@ -1,0 +1,93 @@
+.generation {
+  padding: clamp(1.5rem, 5vw, 2.75rem) clamp(1rem, 5vw, 2.5rem);
+  border: 1px solid #e5dccb;
+  border-radius: 1.5rem;
+  background: #fffdf8;
+  box-shadow: 0 8px 30px #473d2510;
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+p {
+  margin: 0 auto;
+  max-width: 28rem;
+  line-height: 1.6;
+}
+
+.elapsed {
+  margin-top: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.recording-dot {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: #9d312b;
+}
+
+.print-image {
+  display: block;
+  width: min(100%, 21rem);
+  height: auto;
+  margin: 1.25rem auto 0;
+  border: 1px solid #e5dccb;
+  background: white;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+}
+
+button {
+  margin-top: 1.25rem;
+}
+
+.actions button {
+  margin: 0;
+}
+
+.secondary {
+  color: #314e3e;
+  background: #fffdf8;
+}
+
+.secondary:hover:enabled {
+  color: #fffdf8;
+}
+
+@media print {
+  .generation {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: white;
+    box-shadow: none;
+  }
+  .feedback,
+  .actions,
+  .elapsed,
+  button,
+  .print-image:not(.loaded) {
+    display: none;
+  }
+  .print-image.loaded {
+    width: auto;
+    height: auto;
+    max-width: 186mm;
+    max-height: 272mm;
+    margin: 0 auto;
+    border: 0;
+    break-inside: avoid;
+  }
+}

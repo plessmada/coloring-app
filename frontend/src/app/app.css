@@ -67,26 +67,6 @@ p[role='status'] {
 }
 button {
   margin-top: 1.25rem;
-  padding: 0.8rem 1.4rem;
-  min-height: 44px;
-  border: 1px solid #314e3e;
-  border-radius: 0.65rem;
-  color: #fffdf8;
-  background: #314e3e;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-button:hover:enabled {
-  background: #243e30;
-}
-button:focus-visible {
-  outline: 3px solid #8d570b;
-  outline-offset: 4px;
-}
-button:disabled {
-  opacity: 0.65;
-  cursor: wait;
 }
 .spinner {
   width: 1rem;
@@ -104,5 +84,39 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation: none;
+  }
+}
+
+.readiness.ready {
+  min-height: 0;
+  padding: 0;
+  margin: -1.5rem 0 1rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.readiness.ready .status-symbol {
+  display: none;
+}
+
+.readiness.ready p {
+  margin: 0 auto;
+  font-size: 0.875rem;
+  color: #4b6554;
+}
+
+@media print {
+  :host,
+  main {
+    display: block;
+    width: auto;
+    min-height: 0;
+    padding: 0;
+  }
+
+  header,
+  .readiness {
+    display: none;
   }
 }

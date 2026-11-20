@@ -48,7 +48,7 @@ Endpoints validate requests, enforce access, and delegate work. A generation ser
 
 PostgreSQL is the durable job source; an in-memory queue must not be the sole record of accepted work. Handle partial failures between file storage and PostgreSQL so that orphaned inputs or outputs do not become accessible results.
 
-Job claiming must prevent concurrent processing of the same generation, including overlapping application processes. Ownership, stale-job detection, and processing deadlines remain implementation prerequisites; see open decisions.
+Job claiming prevents concurrent processing of the same generation across API processes. PostgreSQL enforces conditional ownership and lease expiry. [Specification 002](specs/002-guest-voice-to-coloring.md) defines lease renewal, queue expiry, and processing deadlines.
 
 ### Status model
 
@@ -68,7 +68,7 @@ An image-generation call may have completed remotely even if the application did
 
 ### AI sequence
 
-1. Transcribe the recording, preserving the raw transcript separately from later transformations.
+1. Send the original recording bytes to OpenAI file transcription and preserve the raw transcript separately from later transformations. Angular stops recording at 60 seconds. The API bounds upload size at 5 MiB.
 2. Moderate the transcript.
 3. Assess whether the description is understandable and appropriate under the product's child-oriented rules, including profanity. For an accepted description, prepare the enriched prompt and keywords.
 4. Validate the final prompt before image generation.
@@ -122,12 +122,12 @@ Retain successful account and guest generations indefinitely in the MVP, includi
 
 Audio is temporary. Delete it after success, rejection, or failure; clean up after interrupted processing as well. Storage settings and cleanup must not inadvertently preserve an audio archive. This describes data under application control; provider-side retention must be reviewed separately.
 
-Retention of failed-job data and rejected image artifacts has not been decided. Do not infer indefinite retention for those artifacts from the policy for successful generations.
+Failed and rejected generations retain safe status metadata for 24 hours after completion. Cleanup retires expired guest credentials without deleting successful generations. [Specification 002](specs/002-guest-voice-to-coloring.md) defines file reconciliation and its one-hour grace period.
 
 ### Access to images and guest results
 
 - The backend checks guest or account access before streaming an approved image for preview or download. Keep temporary recordings private.
-- A guest session is represented by an `HttpOnly` cookie and grants access for 24 hours, including checking status, retrieving a result, and claiming it after authentication.
+- An opaque 256-bit guest token is carried by a host-only `HttpOnly`, `SameSite=Strict` cookie with `Secure` on HTTPS. Only its digest is stored. A session grants access for 24 hours from creation, including status, result retrieval, and future account claiming.
 - The cookie carries an access identifier, not a local list of coloring pages. Do not persist guest history in the browser.
 - After the guest session expires, its unclaimed generations remain stored but are no longer accessible or claimable through that session.
 - Claiming a generation requires both valid access to the guest result and successful account authentication. Assign it atomically, without generating another image, and end access to that generation through the guest session.
@@ -185,11 +185,9 @@ Approved test tools and CI expectations are defined in [development-guidelines.m
 
 | Area | Required decision or validation | Resolve before |
 | --- | --- | --- |
-| Authentication details | Code format and verifier protection, precise challenge throttling, cookie settings, and guest-session renewal behavior | Authentication implementation |
-| Recording and job bounds | Audio formats, upload size/duration, processing deadlines, worker ownership/stale detection, cleanup timing, and concurrency | Generation pipeline implementation |
-| AI behavior | Account access, model evaluation, moderation rules, result schema, image dimensions, and handling of transient or ambiguous failures | Real AI integration and acceptance testing |
+| Authentication details | Code format and verifier protection, precise challenge throttling, and authenticated cookie settings | Authentication implementation |
+| AI integration verification | Verify account access, supported options, output dimensions, and model quality for the workflow in specification 002 | Real AI acceptance testing |
 | Provider data | OpenAI-side retention and applicable processing configuration, separately from deletion in application storage | Sending real users' recordings |
-| Failure artifacts | Retention and cleanup of failed-job content and rejected images | Persistent generation and cleanup implementation |
 | Local email and session verification | Choose the local mailbox tool and verify session persistence across backend restarts | Authentication acceptance |
 | Tooling and browser coverage | Exact compatible tool versions, executable CI commands, and supported browsers beyond initial Chromium CI coverage; follow [development-guidelines.md](development-guidelines.md) | Their dependent implementation slices |
 

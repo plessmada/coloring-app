@@ -14,7 +14,7 @@ test('reaches readiness through Angular, the API, and migrated PostgreSQL', asyn
   });
   await expect(page.getByRole('heading', { level: 1, name: 'ColoringApp' })).toBeVisible();
   await expect(page.getByRole('status')).toHaveText('Aplikacja jest gotowa.');
-  await expect(page.getByRole('button')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nagraj pomysł' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('foundation-ready.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,

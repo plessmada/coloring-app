@@ -1,11 +1,13 @@
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { GuestGeneration } from './generations/guest-generation';
 import { HealthService } from './health/health.service';
 
 type ReadinessState = 'loading' | 'ready' | 'failure';
 
 @Component({
   selector: 'app-root',
+  imports: [GuestGeneration],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })

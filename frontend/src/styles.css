@@ -11,3 +11,36 @@
 body {
   margin: 0;
 }
+button {
+  padding: 0.8rem 1.4rem;
+  min-height: 44px;
+  border: 1px solid #314e3e;
+  border-radius: 0.65rem;
+  color: #fffdf8;
+  background: #314e3e;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover:enabled {
+  background: #243e30;
+}
+button:focus-visible {
+  outline: 3px solid #8d570b;
+  outline-offset: 4px;
+}
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  :root {
+    background: white;
+  }
+}

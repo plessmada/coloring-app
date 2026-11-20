@@ -18,7 +18,64 @@ public sealed class MigrationTests(DatabaseFixture fixture)
         Assert.Equal(1L, await fixture.Database.ScalarAsync("SELECT count(*) FROM public.flyway_schema_history WHERE version = '1'"));
         Assert.Equal(historyBefore, await fixture.Database.ScalarAsync("SELECT row_to_json(h)::text FROM public.flyway_schema_history h WHERE version = '1' AND success"));
         Assert.Equal(schemaBefore, await fixture.Database.ScalarAsync("SELECT oid FROM pg_namespace WHERE nspname = 'coloring_app'"));
-        Assert.Equal(0L, await fixture.Database.ScalarAsync("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'coloring_app'"));
+        Assert.Equal(1L, await fixture.Database.ScalarAsync("SELECT count(*) FROM public.flyway_schema_history WHERE version = '2' AND success"));
+        Assert.Equal(1L, await fixture.Database.ScalarAsync("SELECT count(*) FROM public.flyway_schema_history WHERE version = '3' AND success"));
+        Assert.Equal(2L, await fixture.Database.ScalarAsync("""
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'coloring_app' AND table_name IN ('guest_sessions', 'generations')
+            """));
+    }
+
+    [Fact]
+    public async Task Upgrade_through_v2_and_v3_preserves_existing_data_checksums_and_queued_recording()
+    {
+        var stagedMigrations = Directory.CreateTempSubdirectory("coloring-upgrade-");
+        try
+        {
+            CopyMigration("V1__create_application_schema.sql", stagedMigrations);
+            Assert.Equal(0, await fixture.Database.RunFlywayAsync("migrate", stagedMigrations.FullName, "upgrade_test"));
+            var connection = new NpgsqlConnectionStringBuilder(fixture.Database.ConnectionString) { Database = "upgrade_test" }.ConnectionString;
+            const string v1Checksum = "SELECT checksum FROM public.flyway_schema_history WHERE version = '1' AND success";
+            const string v2Checksum = "SELECT checksum FROM public.flyway_schema_history WHERE version = '2' AND success";
+            var originalV1 = await fixture.Database.ScalarAsync(v1Checksum, connection);
+            Assert.NotNull(originalV1);
+            await fixture.Database.ScalarAsync("CREATE TABLE public.existing_data (value int); INSERT INTO public.existing_data VALUES (42)", connection);
+
+            CopyMigration("V2__create_guest_generations.sql", stagedMigrations);
+            Assert.Equal(0, await fixture.Database.RunFlywayAsync("migrate", stagedMigrations.FullName, "upgrade_test"));
+            var originalV2 = await fixture.Database.ScalarAsync(v2Checksum, connection);
+            Assert.NotNull(originalV2);
+            var session = Guid.NewGuid();
+            var job = Guid.NewGuid();
+            await fixture.Database.ScalarAsync($"""
+                INSERT INTO coloring_app.guest_sessions (id, created_at, expires_at)
+                VALUES ('{session}', statement_timestamp(), statement_timestamp() + interval '24 hours');
+                INSERT INTO coloring_app.generations (id, guest_session_id, status, created_at, audio_key, audio_is_silent)
+                VALUES ('{job}', '{session}', 'Pending', statement_timestamp(), '{job}', true);
+                """, connection);
+
+            Assert.Equal(0, await fixture.Database.RunFlywayAsync("migrate", database: "upgrade_test"));
+            Assert.Equal(0, await fixture.Database.RunFlywayAsync("validate", database: "upgrade_test"));
+            Assert.Equal(originalV1, await fixture.Database.ScalarAsync(v1Checksum, connection));
+            Assert.Equal(originalV2, await fixture.Database.ScalarAsync(v2Checksum, connection));
+            Assert.Equal(42, await fixture.Database.ScalarAsync("SELECT value FROM public.existing_data", connection));
+            Assert.Equal(job, await fixture.Database.ScalarAsync(
+                $"SELECT audio_key FROM coloring_app.generations WHERE id = '{job}' AND status = 'Pending'", connection));
+            Assert.Equal(0L, await fixture.Database.ScalarAsync("""
+                SELECT count(*) FROM information_schema.columns
+                WHERE table_schema = 'coloring_app' AND table_name = 'generations' AND column_name = 'audio_is_silent'
+                """, connection));
+        }
+        finally
+        {
+            stagedMigrations.Delete(recursive: true);
+        }
+    }
+
+    private static void CopyMigration(string name, DirectoryInfo destination)
+    {
+        var source = Path.Combine(AppContext.BaseDirectory, "database", "migrations", name);
+        File.Copy(source, Path.Combine(destination.FullName, name));
     }
 
     [Fact]

@@ -43,7 +43,7 @@ describe('Foundation screen', () => {
     http.expectOne('/api/health/ready').flush(ready);
     fixture.detectChanges();
     expect(text()).toContain('Aplikacja jest gotowa.');
-    expect(button()).toBeNull();
+    expect(button()?.textContent).toContain('Nagraj pomysł');
     http.expectNone('/api/health/ready');
   });
 
@@ -75,7 +75,7 @@ describe('Foundation screen', () => {
     http.expectOne('/api/health/ready').flush(ready);
     fixture.detectChanges();
     expect(text()).toContain('Aplikacja jest gotowa.');
-    expect(button()).toBeNull();
+    expect(button()?.textContent).toContain('Nagraj pomysł');
   });
 
   it('allows another retry after a second failure', () => {
