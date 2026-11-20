@@ -12,6 +12,7 @@
     <InternalsVisibleTo Include="ColoringApp.BrowserTests.Host" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="OpenAI" Version="2.15.0" />
     <PackageReference Include="StbImageSharp" Version="2.30.16" />
   </ItemGroup>
 

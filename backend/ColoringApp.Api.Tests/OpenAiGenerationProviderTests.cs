@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using ColoringApp.Api.Integrations;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -21,12 +23,31 @@ public sealed class OpenAiGenerationProviderTests
             using var handler = new RecordingHandler(async (request, cancellation) =>
             {
                 Assert.Equal("/v1/audio/transcriptions", request.RequestUri?.AbsolutePath);
-                var parts = Assert.IsType<MultipartFormDataContent>(request.Content).ToArray();
-                var file = Assert.Single(parts, part => part.Headers.ContentDisposition?.Name?.Trim('"') == "file");
-                Assert.Equal(new MediaTypeHeaderValue("audio/webm"), file.Headers.ContentType);
-                Assert.Equal(originalBytes, await file.ReadAsByteArrayAsync(cancellation));
-                var languagePart = Assert.Single(parts, part => part.Headers.ContentDisposition?.Name?.Trim('"') == "languages[]");
-                Assert.Equal("pl", await languagePart.ReadAsStringAsync(cancellation));
+                Assert.Equal(new AuthenticationHeaderValue("Bearer", "test-fixture"), request.Headers.Authorization);
+                var contentType = Assert.IsType<MediaTypeHeaderValue>(request.Content?.Headers.ContentType);
+                Assert.Equal("multipart/form-data", contentType.MediaType);
+                var boundary = Assert.Single(contentType.Parameters, parameter => parameter.Name == "boundary").Value!.Trim('"');
+                await using var body = await request.Content!.ReadAsStreamAsync(cancellation);
+                var reader = new MultipartReader(boundary, body);
+                var parts = new Dictionary<string, byte[]>();
+                while (await reader.ReadNextSectionAsync(cancellation) is { } section)
+                {
+                    var disposition = ContentDispositionHeaderValue.Parse(section.ContentDisposition!);
+                    var name = disposition.Name!.Trim('"');
+                    if (name == "file")
+                    {
+                        Assert.Equal("recording.webm", disposition.FileName!.Trim('"'));
+                        Assert.Equal("audio/webm", section.ContentType);
+                    }
+                    using var bytes = new MemoryStream();
+                    await section.Body.CopyToAsync(bytes, cancellation);
+                    parts.Add(name, bytes.ToArray());
+                }
+                Assert.Equal(originalBytes, parts["file"]);
+                Assert.Equal("pl", Encoding.UTF8.GetString(parts["languages[]"]));
+                Assert.Equal("gpt-transcribe", Encoding.UTF8.GetString(parts["model"]));
+                Assert.Equal("json", Encoding.UTF8.GetString(parts["response_format"]));
+                Assert.Equal(4, parts.Count);
                 return Json("""
                     {"text":"  Smok czyta książkę.  ","languages":[{"code":"pl"}]}
                     """);
@@ -79,19 +100,41 @@ public sealed class OpenAiGenerationProviderTests
         using var handler = new RecordingHandler(async (request, cancellation) =>
         {
             Assert.Equal("/v1/responses", request.RequestUri?.AbsolutePath);
+            Assert.Equal("api.openai.com", request.RequestUri?.Host);
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal(new AuthenticationHeaderValue("Bearer", "test-fixture"), request.Headers.Authorization);
+            Assert.Equal("application/json", request.Content?.Headers.ContentType?.MediaType);
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStreamAsync(cancellation));
             Assert.False(body.RootElement.GetProperty("store").GetBoolean());
             Assert.DoesNotContain(transcript, body.RootElement.GetProperty("instructions").GetString());
-            using var input = JsonDocument.Parse(body.RootElement.GetProperty("input").GetString()!);
+            var message = Assert.Single(body.RootElement.GetProperty("input").EnumerateArray());
+            Assert.Equal("user", message.GetProperty("role").GetString());
+            var content = Assert.Single(message.GetProperty("content").EnumerateArray());
+            using var input = JsonDocument.Parse(content.GetProperty("text").GetString()!);
             Assert.Equal(transcript, input.RootElement.GetProperty("transcript").GetString());
             Assert.True(body.RootElement.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
             return Json("""
-                {"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"{\"decision\":\"reject\",\"prompt\":null,\"keywords\":null}"}]}]}
+                {"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"decision\":\"reject\",\"prompt\":null,\"keywords\":null}"}]}]}
                 """);
         });
         using var client = Client(handler);
         var assessment = await Provider(client).EnrichAsync(transcript, CancellationToken.None);
         Assert.Equal(new EnrichmentDecision("reject", null, null), assessment);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, """{"error":{"code":"content_policy_violation"}}""", typeof(GenerationPolicyException))]
+    [InlineData(HttpStatusCode.TemporaryRedirect, "{}", typeof(HttpRequestException))]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "{}", typeof(HttpRequestException))]
+    public async Task Classifies_responses_failures_without_retry(HttpStatusCode status, string body, Type exceptionType)
+    {
+        using var handler = new RecordingHandler((_, _) => Task.FromResult(new HttpResponseMessage(status)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        }));
+        using var client = Client(handler);
+        await Assert.ThrowsAsync(exceptionType, () => Provider(client).EnrichAsync("Narysuj smoka.", CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
     }
 
     [Fact]
@@ -104,15 +147,48 @@ public sealed class OpenAiGenerationProviderTests
             Assert.Equal("data:image/png;base64,AQID",
                 body.RootElement.GetProperty("input")[0].GetProperty("image_url").GetProperty("url").GetString());
             return Json("""
-                {"results":[{"flagged":false,"categories":{"sexual":false},"category_applied_input_types":{"sexual":[]}}]}
+                {"results":[{"flagged":false,"categories":{"sexual":false},"category_scores":{"sexual":0},"category_applied_input_types":{"sexual":[]}}]}
                 """);
         });
         using var client = Client(handler);
         await Assert.ThrowsAsync<InvalidDataException>(() => Provider(client).IsImageFlaggedAsync([1, 2, 3], CancellationToken.None));
     }
 
-    [Fact]
-    public async Task Requests_one_portrait_png_and_does_not_retry_an_ambiguous_image_failure()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Uses_category_flags_when_the_provider_confirms_image_coverage(bool categoryFlagged)
+    {
+        string[] requiredCategories =
+            ["sexual", "violence", "violence/graphic", "self-harm", "self-harm/intent", "self-harm/instructions"];
+        using var handler = new RecordingHandler(async (request, cancellation) =>
+        {
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStreamAsync(cancellation));
+            var image = Assert.Single(body.RootElement.GetProperty("input").EnumerateArray());
+            Assert.Equal("data:image/png;base64,+P8=", image.GetProperty("image_url").GetProperty("url").GetString());
+            return Json(JsonSerializer.Serialize(new
+            {
+                results = new[]
+                {
+                    new
+                    {
+                        flagged = false,
+                        categories = requiredCategories.ToDictionary(category => category, category => category == "sexual" && categoryFlagged),
+                        category_scores = requiredCategories.ToDictionary(category => category, _ => 0.0),
+                        category_applied_input_types = requiredCategories.ToDictionary(category => category, _ => new[] { "image" })
+                    }
+                }
+            }));
+        });
+        using var client = Client(handler);
+        Assert.Equal(categoryFlagged, await Provider(client).IsImageFlaggedAsync([0xf8, 0xff], CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task Requests_one_portrait_png_and_does_not_retry_image_failures(HttpStatusCode? status)
     {
         using var handler = new RecordingHandler(async (request, cancellation) =>
         {
@@ -122,7 +198,37 @@ public sealed class OpenAiGenerationProviderTests
             Assert.Equal(1, body.RootElement.GetProperty("n").GetInt32());
             Assert.Equal("1024x1536", body.RootElement.GetProperty("size").GetString());
             Assert.Equal("png", body.RootElement.GetProperty("output_format").GetString());
+            Assert.Equal("medium", body.RootElement.GetProperty("quality").GetString());
+            if (status is { } received)
+            {
+                return new HttpResponseMessage(received) { Content = new StringContent("{}") };
+            }
             throw new HttpRequestException("Simulated failure after sending the request.");
+        });
+        using var client = Client(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => Provider(client).GenerateImageAsync("A dragon reading.", CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Returns_the_original_image_bytes_from_the_sdk_result()
+    {
+        using var handler = new RecordingHandler((_, _) => Task.FromResult(Json("""
+            {"created":0,"data":[{"b64_json":"AQID"}]}
+            """)));
+        using var client = Client(handler);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await Provider(client).GenerateImageAsync("A dragon reading.", CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Rejects_an_oversized_response_before_the_sdk_decodes_it()
+    {
+        using var handler = new RecordingHandler((_, _) =>
+        {
+            var response = Json("{}");
+            response.Content.Headers.ContentLength = 24 * 1024 * 1024 + 1;
+            return Task.FromResult(response);
         });
         using var client = Client(handler);
         await Assert.ThrowsAsync<HttpRequestException>(() => Provider(client).GenerateImageAsync("A dragon reading.", CancellationToken.None));
@@ -138,11 +244,16 @@ public sealed class OpenAiGenerationProviderTests
         return new OpenAiGenerationProvider(client, configuration, NullLogger<OpenAiGenerationProvider>.Instance);
     }
 
-    private static HttpClient Client(HttpMessageHandler handler) => new(handler) { BaseAddress = new Uri("https://api.openai.com/v1/") };
+    private static HttpClient Client(HttpMessageHandler handler)
+    {
+        var client = new HttpClient(new OpenAiResponseSizeLimitHandler { InnerHandler = handler });
+        client.DefaultRequestHeaders.ConnectionClose = true;
+        return client;
+    }
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)
     {
-        Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        Content = new StringContent(body, Encoding.UTF8, "application/json")
     };
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler

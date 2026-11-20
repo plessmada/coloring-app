@@ -53,12 +53,14 @@ builder.Services.AddHostedService(services => services.GetRequiredService<Genera
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedProto);
+builder.Services.AddTransient<OpenAiResponseSizeLimitHandler>();
 builder.Services.AddHttpClient<IGenerationProvider, OpenAiGenerationProvider>(client =>
 {
-    client.BaseAddress = new Uri("https://api.openai.com/v1/");
     client.Timeout = Timeout.InfiniteTimeSpan;
-    client.MaxResponseContentBufferSize = 24 * 1024 * 1024;
+    // Avoid reconnect retries on stale pooled connections.
+    client.DefaultRequestHeaders.ConnectionClose = true;
 }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+    .AddHttpMessageHandler<OpenAiResponseSizeLimitHandler>()
     .RemoveAllLoggers();
 
 var app = builder.Build();

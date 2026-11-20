@@ -17,7 +17,7 @@ This document records approved decisions for local development of the university
 | Database | PostgreSQL in Docker Compose with a persistent volume, using EF Core and Npgsql |
 | Database migrations | Versioned SQL applied by the one-off Flyway Compose service |
 | File storage | Private directories on the backend host for temporary recordings and approved images |
-| AI provider | OpenAI API, called from the backend |
+| AI provider | OpenAI API, called from the backend through the official .NET SDK |
 | Email | A backend delivery adapter with a local mailbox for development and a controlled substitute for automated tests |
 | Continuous integration | GitHub Actions for builds, style checks, and automated tests |
 

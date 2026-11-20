@@ -1,7 +1,10 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using OpenAI;
 
 namespace ColoringApp.Api.Integrations;
 
@@ -11,6 +14,8 @@ internal sealed class UnusableRecordingException : Exception;
 internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration configuration, ILogger<OpenAiGenerationProvider> logger)
     : IGenerationProvider
 {
+    private static readonly Uri ApiEndpoint = new("https://api.openai.com/v1/");
+
     private const string ChildPolicy = """
         The audience is children. Reject profanity (also in Polish), slurs, sexual material, graphic violence,
         self-harm, drug use, harassment, and other content unsuitable for children. Allow harmless fantasy,
@@ -38,6 +43,8 @@ internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration c
     private static readonly string[] ImageModerationCategories =
         ["sexual", "violence", "violence/graphic", "self-harm", "self-harm/intent", "self-harm/instructions"];
 
+    private readonly OpenAIClient? sdk = CreateSdkClient(http, configuration["OpenAI:ApiKey"]);
+
     private string TranscriptionModel => configuration["OpenAI:TranscriptionModel"] ?? "gpt-transcribe";
     private string TextModel => configuration["OpenAI:TextModel"] ?? "gpt-6-luna";
     private string ModerationModel => configuration["OpenAI:ModerationModel"] ?? "omni-moderation-latest";
@@ -45,20 +52,28 @@ internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration c
 
     public async Task<PolishTranscription> TranscribeAsync(string recordingPath, CancellationToken cancellationToken)
     {
+        const string stage = "transcription";
         await using var stream = File.OpenRead(recordingPath);
         using var form = new MultipartFormDataContent();
         using var file = new StreamContent(stream);
         file.Headers.ContentType = new MediaTypeHeaderValue("audio/webm");
+        var model = TranscriptionModel;
         form.Add(file, "file", "recording.webm");
-        form.Add(new StringContent(TranscriptionModel), "model");
+        form.Add(new StringContent(model), "model");
         form.Add(new StringContent("pl"), "languages[]");
         form.Add(new StringContent("json"), "response_format");
         try
         {
-            using var result = await SendAsync("audio/transcriptions", "transcription", TranscriptionModel, form,
-                TimeSpan.FromSeconds(45), cancellationToken);
-            var text = ReadString(result.RootElement.GetProperty("text"));
-            var isPolish = !string.IsNullOrWhiteSpace(text) && result.RootElement.GetProperty("languages").EnumerateArray()
+            var client = GetSdkClient(stage).GetAudioClient(model);
+            using var deadline = StartDeadline(TimeSpan.FromSeconds(45), cancellationToken);
+            var startedAt = Stopwatch.GetTimestamp();
+            // The typed transcription API exposes the legacy singular language field.
+            using var content = BinaryContent.Create(await form.ReadAsStreamAsync(deadline.Token));
+            var request = client.TranscribeAudioAsync(content, form.Headers.ContentType!.ToString(),
+                new RequestOptions { CancellationToken = deadline.Token });
+            using var json = await ReadResponseAsync(request, stage, model, startedAt);
+            var text = ReadString(json.RootElement.GetProperty("text"));
+            var isPolish = !string.IsNullOrWhiteSpace(text) && json.RootElement.GetProperty("languages").EnumerateArray()
                 .Any(language => ReadString(language.GetProperty("code")) == "pl");
             return new PolishTranscription(text, isPolish);
         }
@@ -79,9 +94,17 @@ internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration c
 
     private async Task<bool> ModerateAsync(object input, string modality, CancellationToken cancellationToken)
     {
-        using var result = await SendAsync("moderations", $"moderation_{modality}", ModerationModel,
-            JsonContent.Create(new { model = ModerationModel, input }), TimeSpan.FromSeconds(25), cancellationToken);
-        var decision = result.RootElement.GetProperty("results").EnumerateArray().Single();
+        var stage = $"moderation_{modality}";
+        var model = ModerationModel;
+        var client = GetSdkClient(stage).GetModerationClient(model);
+        using var content = BinaryContent.CreateJson(new { model, input });
+        using var deadline = StartDeadline(TimeSpan.FromSeconds(25), cancellationToken);
+        var startedAt = Stopwatch.GetTimestamp();
+        // The protocol overload accepts the complete moderation payload, including image input.
+        var request = client.ClassifyTextAsync(content, new RequestOptions { CancellationToken = deadline.Token });
+        using var json = await ReadResponseAsync(request, stage, model, startedAt);
+
+        var decision = json.RootElement.GetProperty("results").EnumerateArray().Single();
         var flagged = decision.GetProperty("flagged").GetBoolean();
         var categories = decision.GetProperty("categories");
         var applied = decision.GetProperty("category_applied_input_types");
@@ -130,16 +153,23 @@ internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration c
     private async Task<JsonDocument> AssessAsync(string name, string instructions, object userData, JsonElement schema,
         CancellationToken cancellationToken)
     {
-        using var response = await SendAsync("responses", name, TextModel, JsonContent.Create(new
+        var model = TextModel;
+        var client = GetSdkClient(name);
+        var inputText = new { type = "input_text", text = JsonSerializer.Serialize(userData) };
+        using var payload = BinaryContent.CreateJson(new
         {
-            model = TextModel,
+            model,
             store = false,
             instructions,
-            input = JsonSerializer.Serialize(userData),
+            input = new[] { new { type = "message", role = "user", content = new[] { inputText } } },
             reasoning = new { effort = "low" },
             max_output_tokens = 2_000,
             text = new { format = new { type = "json_schema", name, strict = true, schema } }
-        }), TimeSpan.FromSeconds(25), cancellationToken);
+        });
+        using var deadline = StartDeadline(TimeSpan.FromSeconds(25), cancellationToken);
+        var startedAt = Stopwatch.GetTimestamp();
+        var request = SendResponseAsync(client, payload, deadline.Token);
+        using var response = await ReadResponseAsync(request, name, model, startedAt);
         var root = response.RootElement;
         if (ReadString(root.GetProperty("status")) != "completed")
         {
@@ -163,93 +193,121 @@ internal sealed class OpenAiGenerationProvider(HttpClient http, IConfiguration c
         };
     }
 
+    private static async Task<ClientResult> SendResponseAsync(OpenAIClient client, BinaryContent payload, CancellationToken cancellationToken)
+    {
+        // The generated Responses client is experimental in the pinned SDK.
+        var endpoint = new Uri(ApiEndpoint, "responses");
+        using var message = client.Pipeline.CreateMessage(endpoint, "POST");
+        message.Apply(new RequestOptions { CancellationToken = cancellationToken });
+        message.Request.Headers.Set("Content-Type", "application/json");
+        message.Request.Content = payload;
+        await client.Pipeline.SendAsync(message);
+        var response = message.ExtractResponse() ?? throw new InvalidDataException();
+        if (response.Status is < 200 or >= 300)
+        {
+            throw new ClientResultException(response);
+        }
+        return ClientResult.FromResponse(response);
+    }
+
     public async Task<byte[]> GenerateImageAsync(string prompt, CancellationToken cancellationToken)
     {
-        using var result = await SendAsync("images/generations", "image_generation", ImageModel, JsonContent.Create(new
+        const string stage = "image_generation";
+        var model = ImageModel;
+        var client = GetSdkClient(stage).GetImageClient(model);
+        using var content = BinaryContent.CreateJson(new
         {
-            model = ImageModel,
+            model,
             prompt,
             n = 1,
             size = $"{ColoringPagePng.Width}x{ColoringPagePng.Height}",
             output_format = "png",
             quality = "medium"
-        }), TimeSpan.FromMinutes(3), cancellationToken);
+        });
+        using var deadline = StartDeadline(TimeSpan.FromMinutes(3), cancellationToken);
+        var startedAt = Stopwatch.GetTimestamp();
+        var request = client.GenerateImagesAsync(content, new RequestOptions { CancellationToken = deadline.Token });
+        using var result = await ReadResponseAsync(request, stage, model, startedAt);
         return result.RootElement.GetProperty("data").EnumerateArray().Single().GetProperty("b64_json").GetBytesFromBase64();
     }
 
-    private async Task<JsonDocument> SendAsync(string endpoint, string stage, string model, HttpContent content,
-        TimeSpan timeout, CancellationToken cancellationToken)
+    private static OpenAIClient? CreateSdkClient(HttpClient http, string? apiKey)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
-        {
-            Content = content,
-            Version = HttpVersion.Version11,
-            VersionPolicy = HttpVersionPolicy.RequestVersionExact
-        };
-        var apiKey = configuration["OpenAI:ApiKey"];
         if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        return new OpenAIClient(new ApiKeyCredential(apiKey), new OpenAIClientOptions
+        {
+            Endpoint = ApiEndpoint,
+            Transport = new HttpClientPipelineTransport(http),
+            // An ambiguous image request must never be replayed by the SDK.
+            RetryPolicy = new ClientRetryPolicy(0),
+            NetworkTimeout = Timeout.InfiniteTimeSpan,
+            EnableDistributedTracing = false,
+            ClientLoggingOptions = new ClientLoggingOptions { EnableLogging = false }
+        });
+    }
+
+    private OpenAIClient GetSdkClient(string stage)
+    {
+        if (sdk is null)
         {
             logger.LogWarning("OpenAI:ApiKey is missing for stage {Stage}", stage);
             throw new InvalidOperationException();
         }
 
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        // A fresh connection for each request avoids retries on stale pooled connections.
-        request.Headers.ConnectionClose = true;
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        return sdk;
+    }
+
+    private static CancellationTokenSource StartDeadline(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
-        var timer = Stopwatch.StartNew();
+        return deadline;
+    }
+
+    private async Task<JsonDocument> ReadResponseAsync(Task<ClientResult> request, string stage, string model, long startedAt)
+    {
         var outcome = "generation_failed";
         try
         {
-            using var response = await http.SendAsync(request, deadline.Token);
-            if (!response.IsSuccessStatusCode)
+            var result = await request;
+            using var response = result.GetRawResponse();
+            var json = JsonDocument.Parse(response.Content.ToMemory());
+            outcome = "response_received";
+            return json;
+        }
+        catch (ClientResultException exception)
+        {
+            using var response = exception.GetRawResponse();
+            if (response is not null && exception.Status is (int)HttpStatusCode.BadRequest or (int)HttpStatusCode.UnsupportedMediaType)
             {
-                if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnsupportedMediaType)
+                using var error = JsonDocument.Parse(response.Content.ToMemory());
+                if (error.RootElement.TryGetProperty("error", out var details) && details.ValueKind == JsonValueKind.Object)
                 {
-                    using var error = await ReadJsonAsync(response, deadline.Token);
-                    if (error.RootElement.TryGetProperty("error", out var details) && details.ValueKind == JsonValueKind.Object)
+                    var code = ReadOptionalString(details, "code");
+                    if (code is "content_policy_violation" or "moderation_blocked")
                     {
-                        var code = ReadOptionalString(details, "code");
-                        if (code is "content_policy_violation" or "moderation_blocked")
-                        {
-                            throw new GenerationPolicyException();
-                        }
+                        outcome = "content_rejected";
+                        throw new GenerationPolicyException();
+                    }
 
-                        if (endpoint == "audio/transcriptions" && IsUnusableRecording(details, code))
-                        {
-                            throw new UnusableRecordingException();
-                        }
+                    if (stage == "transcription" && IsUnusableRecording(details, code))
+                    {
+                        outcome = "unintelligible_audio";
+                        throw new UnusableRecordingException();
                     }
                 }
-                throw new HttpRequestException();
             }
-
-            var result = await ReadJsonAsync(response, deadline.Token);
-            outcome = "response_received";
-            return result;
-        }
-        catch (GenerationPolicyException)
-        {
-            outcome = "content_rejected";
-            throw;
-        }
-        catch (UnusableRecordingException)
-        {
-            outcome = "unintelligible_audio";
-            throw;
+            throw new HttpRequestException();
         }
         finally
         {
             logger.LogInformation("OpenAI stage {Stage}, model {Model}, outcome {Outcome}, elapsed {ElapsedMs} ms",
-                stage, model, outcome, timer.ElapsedMilliseconds);
+                stage, model, outcome, (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         }
-    }
-
-    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
     }
 
     private static string ReadString(JsonElement value) => value.GetString() ?? throw new InvalidDataException();

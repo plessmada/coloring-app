@@ -11,7 +11,7 @@ ColoringApp turns a guest’s Polish voice recording into a printable coloring p
 - For real generation, use an OpenAI project API key with access to the configured models. Automated tests supply a controlled provider.
 - For browser tests, install Playwright Chromium after `npm ci` (see verification below).
 
-Selected stable versions: Angular/CLI **22.2.6**, TypeScript **6.0.3**, RxJS **7.8.2**, EF Core **10.0.4**, Npgsql EF provider **10.0.3**, PostgreSQL **18.7**, Flyway **13.12.2**, StbImageSharp **2.30.16** for PNG decoding, Testcontainers **4.17.0**, xUnit **2.9.3**, Vitest **5.1.0**, and Playwright **1.65.1**. Exact dependency trees are recorded in `frontend/package-lock.json` and backend `packages.lock.json` files. Images are pinned in `compose.yaml` and the shared `PostgresSandbox` test infrastructure; keep those pins aligned.
+Selected stable versions: Angular/CLI **22.2.6**, TypeScript **6.0.3**, RxJS **7.8.2**, EF Core **10.0.4**, Npgsql EF provider **10.0.3**, PostgreSQL **18.7**, Flyway **13.12.2**, OpenAI .NET SDK **2.15.0**, StbImageSharp **2.30.16** for PNG decoding, Testcontainers **4.17.0**, xUnit **2.9.3**, Vitest **5.1.0**, and Playwright **1.65.1**. Exact dependency trees are recorded in `frontend/package-lock.json` and backend `packages.lock.json` files. Images are pinned in `compose.yaml` and the shared `PostgresSandbox` test infrastructure; keep those pins aligned.
 
 ## First startup
 
